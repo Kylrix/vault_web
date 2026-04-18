@@ -20,7 +20,7 @@ export default defineConfig({
   },
   plugins: [
     devtools(),
-    nitro({ rollupConfig: { external: [/^@sentry//] } }),
+    nitro({ rollupConfig: { external: [/^@sentry\//] } }),
     tanstackStart(),
     viteReact(),
   ],
