@@ -106,14 +106,124 @@ export const APPWRITE_BUCKET_SECURE_DOCUMENTS_ID = "secureDocuments";
 
 export { ID, Query, Permission, Role };
 
-// --- USER SESSION ---
+const CURRENT_USER_CACHE_KEY = 'kylrix_vault_current_user_v2';
+const CURRENT_USER_CACHE_TTL = 5 * 60 * 1000;
+const CURRENT_USER_REQUEST_TIMEOUT = 8000;
 
-export async function getCurrentUser(): Promise<any | null> {
+type CachedCurrentUser = {
+  user: any | null;
+  expiresAt: number;
+};
+
+let currentUserCache: CachedCurrentUser | null = null;
+let currentUserInFlight: Promise<any | null> | null = null;
+const originalAccountGet = appwriteAccount.get.bind(appwriteAccount);
+
+const readPersistentCurrentUserCache = (): CachedCurrentUser | null => {
+  if (typeof window === 'undefined') return null;
   try {
-    return await appwriteAccount.get();
+    const raw = window.localStorage.getItem(CURRENT_USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedCurrentUser;
+    if (!parsed || typeof parsed.expiresAt !== 'number' || parsed.expiresAt <= Date.now()) {
+      window.localStorage.removeItem(CURRENT_USER_CACHE_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
+};
+
+const writePersistentCurrentUserCache = (cache: CachedCurrentUser | null) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!cache) {
+      window.localStorage.removeItem(CURRENT_USER_CACHE_KEY);
+      return;
+    }
+    window.localStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore persistence failures.
+  }
+};
+
+const clearCurrentUserCache = () => {
+  currentUserCache = null;
+  writePersistentCurrentUserCache(null);
+};
+
+const getCachedCurrentUser = () => {
+  if (currentUserCache && currentUserCache.expiresAt > Date.now()) return currentUserCache.user;
+  const persistent = readPersistentCurrentUserCache();
+  if (!persistent) return null;
+  currentUserCache = persistent;
+  return persistent.user;
+};
+
+const setCachedCurrentUser = (user: any | null) => {
+  const cache: CachedCurrentUser = { user, expiresAt: Date.now() + CURRENT_USER_CACHE_TTL };
+  currentUserCache = cache;
+  writePersistentCurrentUserCache(cache);
+  return user;
+};
+
+const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error('Current user request timed out')), timeoutMs);
+    }),
+  ]);
+};
+
+const patchAccountMethod = (methodName: string) => {
+  const original = (appwriteAccount as any)[methodName];
+  if (typeof original !== 'function') return;
+  (appwriteAccount as any)[methodName] = async (...args: any[]) => {
+    const result = await original.apply(appwriteAccount, args);
+    clearCurrentUserCache();
+    return result;
+  };
+};
+
+patchAccountMethod('deleteSession');
+patchAccountMethod('deleteSessions');
+patchAccountMethod('updatePrefs');
+patchAccountMethod('updateName');
+patchAccountMethod('updateEmail');
+patchAccountMethod('updatePhone');
+patchAccountMethod('updatePassword');
+
+// --- USER SESSION ---
+
+export async function getCurrentUser(): Promise<any | null> {
+  if (currentUserCache && currentUserCache.expiresAt > Date.now()) {
+    return currentUserCache.user;
+  }
+
+  const persistent = getCachedCurrentUser();
+  if (persistent) return persistent;
+
+  if (currentUserInFlight) {
+    return currentUserInFlight;
+  }
+
+  currentUserInFlight = withTimeout(originalAccountGet(), CURRENT_USER_REQUEST_TIMEOUT)
+    .then((user) => setCachedCurrentUser(user))
+    .catch(() => {
+      clearCurrentUserCache();
+      return null;
+    })
+    .finally(() => {
+      currentUserInFlight = null;
+    });
+
+  return currentUserInFlight;
+}
+
+export function invalidateCurrentUserCache() {
+  clearCurrentUserCache();
 }
 
 // Unified resolver: attempts global session then cookie-based fallback
