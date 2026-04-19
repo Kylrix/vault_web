@@ -1,6 +1,128 @@
 import { createAPIFileRoute } from '@tanstack/react-start/api';
-import { POST } from '@/app/api/reset-purge/route';
+import { getRequest } from '@tanstack/react-start/server';
+import { AppwriteService, resolveCurrentUser, appwriteDatabases } from '@/lib/appwrite';
+import { Query } from 'appwrite';
+import { APPWRITE_CONFIG } from '@/lib/appwrite/config';
 
 export const APIRoute = createAPIFileRoute('/api/reset-purge')({
-  POST,
+  POST: async () => {
+    try {
+      const request = getRequest();
+      const user = await resolveCurrentUser(request as any);
+      if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+      const userId = user.$id;
+      console.log(`[MasterPurge] Starting Tier 2 purge for user: ${userId}`);
+
+      const creds = await AppwriteService.listAllCredentials(userId);
+      const totps = await AppwriteService.listTOTPSecrets(userId);
+
+      console.log(`[MasterPurge] Deleting ${creds.length} credentials and ${totps.length} TOTP secrets`);
+
+      await Promise.all([
+        ...creds.map(c => AppwriteService.deleteCredential(c.$id)),
+        ...totps.map(t => AppwriteService.deleteTOTPSecret(t.$id)),
+      ]);
+
+      const CHAT_DB = APPWRITE_CONFIG.DATABASES.CHAT;
+      const CONV_TABLE = APPWRITE_CONFIG.TABLES.CHAT.CONVERSATIONS;
+      const CONV_MEMBERS_TABLE = APPWRITE_CONFIG.TABLES.CHAT.CONVERSATION_MEMBERS || 'conversationMembers';
+      const MSG_TABLE = APPWRITE_CONFIG.TABLES.CHAT.MESSAGES;
+
+      const memberRows = await appwriteDatabases.listDocuments(CHAT_DB, CONV_MEMBERS_TABLE, [
+        Query.equal('userId', userId),
+        Query.limit(1000),
+      ]);
+      const conversationIds = Array.from(new Set((memberRows.documents || []).map((row: any) => row.conversationId).filter(Boolean)));
+      const convsRes = conversationIds.length ? await appwriteDatabases.listDocuments(CHAT_DB, CONV_TABLE, [
+        Query.equal('$id', conversationIds),
+        Query.equal('type', 'direct'),
+      ]) : { documents: [] as any[], total: 0 };
+
+      console.log(`[MasterPurge] Found ${convsRes.total} direct conversations to purge`);
+
+      for (const conv of convsRes.documents) {
+        const isSelfChat = conv.participants.every((p: string) => p === userId);
+
+        const msgsRes = await appwriteDatabases.listDocuments(CHAT_DB, MSG_TABLE, [
+          Query.equal('conversationId', conv.$id),
+          Query.equal('senderId', userId),
+          Query.limit(1000),
+        ]);
+
+        await Promise.all(msgsRes.documents.map(m => appwriteDatabases.deleteDocument(CHAT_DB, MSG_TABLE, m.$id)));
+
+        if (isSelfChat) {
+          await appwriteDatabases.deleteDocument(CHAT_DB, CONV_TABLE, conv.$id);
+        }
+      }
+
+      const keychainEntries = await AppwriteService.listKeychainEntries(userId);
+      console.log(`[MasterPurge] Purging ${keychainEntries.length} keychain entries`);
+
+      await Promise.all(keychainEntries.map(e => AppwriteService.deleteKeychainEntry(e.$id)));
+
+      const identityRows = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.DATABASES.PASSWORD_MANAGER,
+        APPWRITE_CONFIG.TABLES.PASSWORD_MANAGER.IDENTITIES,
+        [Query.equal('userId', userId)],
+      );
+      await Promise.all(identityRows.documents.map(row => appwriteDatabases.deleteDocument(
+        APPWRITE_CONFIG.DATABASES.PASSWORD_MANAGER,
+        APPWRITE_CONFIG.TABLES.PASSWORD_MANAGER.IDENTITIES,
+        row.$id,
+      )));
+
+      const keyMappings = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.DATABASES.PASSWORD_MANAGER,
+        'key_mapping',
+        [
+          Query.or([
+            Query.equal('grantee', userId),
+            Query.contains('metadata', userId),
+            Query.equal('resourceId', userId),
+          ]),
+        ],
+      );
+      await Promise.all(keyMappings.documents.map(row => appwriteDatabases.deleteDocument(
+        APPWRITE_CONFIG.DATABASES.PASSWORD_MANAGER,
+        'key_mapping',
+        row.$id,
+      )));
+
+      const CHAT_USERS_TABLE = APPWRITE_CONFIG.TABLES.CHAT.USERS;
+      const NOTE_USERS_TABLE = APPWRITE_CONFIG.TABLES.NOTE.USERS;
+      try {
+        await Promise.all([
+          appwriteDatabases.updateDocument(CHAT_DB, CHAT_USERS_TABLE, userId, {
+            publicKey: null,
+            updatedAt: new Date().toISOString(),
+          }).catch(() => null),
+          appwriteDatabases.updateDocument(APPWRITE_CONFIG.DATABASES.NOTE, NOTE_USERS_TABLE, userId, {
+            publicKey: null,
+            updatedAt: new Date().toISOString(),
+          }).catch(() => null),
+        ]);
+        console.log(`[MasterPurge] Reset profile public keys for user: ${userId}`);
+      } catch (e) {
+        console.warn(`[MasterPurge] Could not reset profile keys (might not exist yet):`, e);
+      }
+
+      const userDoc = await AppwriteService.getUserDoc(userId);
+      if (userDoc) {
+        await AppwriteService.updateUserDoc(userDoc.$id, {
+          masterpass: false,
+          isPasskey: false,
+        });
+      }
+
+      console.log(`[MasterPurge] Purge complete for user: ${userId}`);
+      return Response.json({ success: true });
+    } catch (error: unknown) {
+      console.error('[MasterPurge] Critical failure:', error);
+      const message = error instanceof Error ? error.message : 'Internal Server Error';
+      return Response.json({ error: message }, { status: 500 });
+    }
+  },
 });
+export const Route = APIRoute;

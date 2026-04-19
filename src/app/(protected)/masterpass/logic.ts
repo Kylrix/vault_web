@@ -1,6 +1,7 @@
 import { logDebug, logError } from "@/lib/logger";
 import { markSudoActive, resetSudo } from "@/lib/sudo-mode";
 import { ecosystemSecurity } from "@/lib/ecosystem/security";
+import { purgeTier2Data } from "@/lib/server/api";
 
 // Enhanced crypto configuration for maximum security with optimal performance
 export class MasterPassCrypto {
@@ -310,11 +311,7 @@ export class MasterPassCrypto {
       this.lockApplication();
 
       // Trigger server-side purge of Tier 2 data
-      const response = await fetch('/api/reset-purge', { method: 'POST' });
-      if (!response.ok) {
-        logError("Failed to trigger server-side purge during reset");
-        return false;
-      }
+      await purgeTier2Data();
 
       // Clear any setup flags
       if (typeof window !== "undefined") {

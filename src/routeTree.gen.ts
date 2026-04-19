@@ -19,6 +19,8 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MasterpassResetRouteImport } from './routes/masterpass.reset'
 import { Route as CredentialsNewRouteImport } from './routes/credentials.new'
+import { Route as ApiResetPurgeRouteRouteImport } from './routes/api/reset-purge/route'
+import { Route as ApiAiGenerateRouteRouteImport } from './routes/api/ai/generate/route'
 
 const TotpRoute = TotpRouteImport.update({
   id: '/totp',
@@ -70,6 +72,16 @@ const CredentialsNewRoute = CredentialsNewRouteImport.update({
   path: '/credentials/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiResetPurgeRouteRoute = ApiResetPurgeRouteRouteImport.update({
+  id: '/api/reset-purge',
+  path: '/api/reset-purge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiGenerateRouteRoute = ApiAiGenerateRouteRouteImport.update({
+  id: '/api/ai/generate',
+  path: '/api/ai/generate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -80,8 +92,10 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/sharing': typeof SharingRoute
   '/totp': typeof TotpRoute
+  '/api/reset-purge': typeof ApiResetPurgeRouteRoute
   '/credentials/new': typeof CredentialsNewRoute
   '/masterpass/reset': typeof MasterpassResetRoute
+  '/api/ai/generate': typeof ApiAiGenerateRouteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -92,8 +106,10 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/sharing': typeof SharingRoute
   '/totp': typeof TotpRoute
+  '/api/reset-purge': typeof ApiResetPurgeRouteRoute
   '/credentials/new': typeof CredentialsNewRoute
   '/masterpass/reset': typeof MasterpassResetRoute
+  '/api/ai/generate': typeof ApiAiGenerateRouteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -105,8 +121,10 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/sharing': typeof SharingRoute
   '/totp': typeof TotpRoute
+  '/api/reset-purge': typeof ApiResetPurgeRouteRoute
   '/credentials/new': typeof CredentialsNewRoute
   '/masterpass/reset': typeof MasterpassResetRoute
+  '/api/ai/generate': typeof ApiAiGenerateRouteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -119,8 +137,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sharing'
     | '/totp'
+    | '/api/reset-purge'
     | '/credentials/new'
     | '/masterpass/reset'
+    | '/api/ai/generate'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -131,8 +151,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sharing'
     | '/totp'
+    | '/api/reset-purge'
     | '/credentials/new'
     | '/masterpass/reset'
+    | '/api/ai/generate'
   id:
     | '__root__'
     | '/'
@@ -143,8 +165,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sharing'
     | '/totp'
+    | '/api/reset-purge'
     | '/credentials/new'
     | '/masterpass/reset'
+    | '/api/ai/generate'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -156,7 +180,9 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SharingRoute: typeof SharingRoute
   TotpRoute: typeof TotpRoute
+  ApiResetPurgeRouteRoute: typeof ApiResetPurgeRouteRoute
   CredentialsNewRoute: typeof CredentialsNewRoute
+  ApiAiGenerateRouteRoute: typeof ApiAiGenerateRouteRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -231,6 +257,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CredentialsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/reset-purge': {
+      id: '/api/reset-purge'
+      path: '/api/reset-purge'
+      fullPath: '/api/reset-purge'
+      preLoaderRoute: typeof ApiResetPurgeRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/generate': {
+      id: '/api/ai/generate'
+      path: '/api/ai/generate'
+      fullPath: '/api/ai/generate'
+      preLoaderRoute: typeof ApiAiGenerateRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -255,7 +295,9 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SharingRoute: SharingRoute,
   TotpRoute: TotpRoute,
+  ApiResetPurgeRouteRoute: ApiResetPurgeRouteRoute,
   CredentialsNewRoute: CredentialsNewRoute,
+  ApiAiGenerateRouteRoute: ApiAiGenerateRouteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
