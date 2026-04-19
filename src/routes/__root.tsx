@@ -2,6 +2,9 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/router-core';
 import type { ReactNode } from 'react';
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Providers } from '@/components/Providers';
+import { AppShell } from '@/components/layout/AppShell';
+import { EcosystemClient } from '@/components/ecosystem/EcosystemClient';
 import appCss from '../globals.css?url';
 
 export const Route = createRootRoute({
@@ -49,9 +52,12 @@ function RootDocument({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head><HeadContent /></head>
       <body>
-        <div style={{ minHeight: '100vh', width: '100%', background: '#000' }}>
-          {children}
-        </div>
+        <Providers>
+          <EcosystemClient nodeId="vault" />
+          <Box sx={{ minHeight: '100vh', width: '100%', bgcolor: '#000' }}>
+            <AppShell>{children}</AppShell>
+          </Box>
+        </Providers>
         <Scripts />
       </body>
     </html>
