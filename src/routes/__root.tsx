@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { Providers } from '@/components/Providers';
-import { EcosystemClient } from '@/app/components/EcosystemClient';
+import { EcosystemClient } from '@/components/ecosystem/EcosystemClient';
 import AppShell from '@/components/layout/AppShell';
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 import appCss from '../globals.css?url';
