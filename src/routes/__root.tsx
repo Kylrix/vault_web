@@ -49,9 +49,9 @@ function RootDocument({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head><HeadContent /></head>
       <body>
-        <Box sx={{ minHeight: '100vh', width: '100%', bgcolor: '#000' }}>
+        <div style={{ minHeight: '100vh', width: '100%', background: '#000' }}>
           {children}
-        </Box>
+        </div>
         <Scripts />
       </body>
     </html>
