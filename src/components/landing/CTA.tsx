@@ -9,8 +9,12 @@ import { useRouter } from "next/navigation";
 export default function CTA() {
   // Use the app's secondary color for the primary hero CTA to balance branding
   const VAULT_SECONDARY = "#10B981";
-  const { user, openIDMWindow, isAuthenticating } = useAppwriteVault();
+  const { isAuthenticated, isAuthReady, openIDMWindow, isAuthenticating } = useAppwriteVault();
   const router = useRouter();
+
+  if (!isAuthReady) {
+    return null;
+  }
 
   return (
     <Box sx={{ py: 20, textAlign: 'center', position: 'relative' }}>
@@ -40,7 +44,7 @@ export default function CTA() {
           style={{ backgroundColor: VAULT_SECONDARY, color: '#000' }}
           endIcon={isAuthenticating ? <CircularProgress size={20} color="inherit" /> : <ChevronRightIcon sx={{ fontSize: 20 }} />}
           onClick={() => {
-            if (user) {
+            if (isAuthenticated) {
               router.push("/dashboard");
               return;
             }
@@ -69,7 +73,7 @@ export default function CTA() {
             transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
           }}
         >
-          {user ? "Go to Dashboard" : "Get Started Free"}
+          {isAuthenticated ? "Go to Dashboard" : "Get Started Free"}
         </Button>
         <Typography variant="caption" sx={{ display: 'block', mt: 3, color: 'rgba(255, 255, 255, 0.3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
           No credit card required • Free forever

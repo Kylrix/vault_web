@@ -37,15 +37,27 @@ const FAQ = dynamic(() => import("@/components/landing/FAQ"), { ssr: false });
 const CTA = dynamic(() => import("@/components/landing/CTA"), { ssr: false });
 
 export default function LandingPage() {
-  const { user, openIDMWindow, isAuthenticating } = useAppwriteVault();
+  const { isAuthenticated, isAuthReady, openIDMWindow, isAuthenticating } = useAppwriteVault();
   const router = useRouter();
   const demoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (user) {
-      router.replace("/masterpass");
+    if (isAuthReady && isAuthenticated) {
+      router.replace("/dashboard");
     }
-  }, [user, router]);
+  }, [isAuthReady, isAuthenticated, router]);
+
+  if (!isAuthReady) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: '#000', display: 'grid', placeItems: 'center' }}>
+        <CircularProgress color="primary" />
+      </Box>
+    );
+  }
+
+  if (isAuthenticated) {
+    return null;
+  }
 
   const handleViewDemo = () => {
     if (demoRef.current) {
@@ -101,7 +113,7 @@ export default function LandingPage() {
               style={{ backgroundColor: '#10B981', color: '#000' }}
               endIcon={isAuthenticating ? <CircularProgress size={20} color="inherit" /> : <ChevronRightIcon sx={{ fontSize: 20 }} />}
               onClick={() => {
-                if (user) {
+                if (isAuthenticated) {
                   router.push("/dashboard");
                   return;
                 }
@@ -123,7 +135,7 @@ export default function LandingPage() {
                 transition: 'all 0.3s ease'
               }}
             >
-              {user ? "Go to Dashboard" : "Get Started Free"}
+              Get Started Free
             </Button>
             <Button
               variant="outlined"
