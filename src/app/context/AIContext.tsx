@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback } from "react";
+import type { ReactNode } from "react";
 import { AnalysisMode } from "@/lib/ai/types";
 import { PrivacyFilter } from "@/lib/ai/sanitizer";
 import { generateAIContent } from "@/app/actions/ai";
@@ -149,4 +150,3 @@ export function AIProvider({ children }: { children: ReactNode }) {
     </AIContext.Provider>
   );
 }
-

@@ -4,9 +4,9 @@ import {
   useEffect,
   useState,
   useCallback,
-  ReactNode,
   useRef,
 } from "react";
+import type { ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   appwriteAccount,

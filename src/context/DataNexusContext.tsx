@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useRef, useCallback, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useRef, useCallback, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { masterPassCrypto } from "@/app/(protected)/masterpass/logic";
 
 /**

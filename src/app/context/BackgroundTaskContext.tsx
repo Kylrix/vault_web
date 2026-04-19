@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useState, useCallback } from "react";
+import type { ReactNode } from "react";
 import { Box, Typography, LinearProgress, Button, alpha, CircularProgress } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningIcon from "@mui/icons-material/Warning";
@@ -250,4 +251,3 @@ export function BackgroundTaskProvider({ children }: { children: ReactNode }) {
     </BackgroundTaskContext.Provider>
   );
 }
-
