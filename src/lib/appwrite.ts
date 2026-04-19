@@ -7,7 +7,6 @@ import {
   Query,
   AuthenticationFactor,
   Avatars,
-  Models,
   Permission,
   Role,
   Realtime,
@@ -26,8 +25,8 @@ import type {
   KeychainCreate,
   KeyMapping,
   KeyMappingCreate,
+  Models,
 } from "@/lib/appwrite/types";
-import { AuthenticatorType } from "appwrite";
 import { sanitizeString } from "@/lib/validation";
 
 import { APPWRITE_CONFIG } from "./appwrite/config";
