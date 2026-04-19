@@ -13,7 +13,7 @@ import { Toaster } from "react-hot-toast";
 import { ThemeProvider as MuiThemeProvider, CssBaseline } from "@mui/material";
 import { darkTheme } from "@/theme/theme";
 import EcosystemPortal from "@/components/common/EcosystemPortal";
-import { useEcosystemNode } from "@/lib/ecosystem/mesh";
+import { useEcosystemNode } from "@/hooks/useEcosystemNode";
 
 function GlobalEcosystemHandler() {
   const [open, setOpen] = useState(false);

@@ -6,7 +6,7 @@ import { Box, Typography, LinearProgress, Button, alpha, CircularProgress } from
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningIcon from "@mui/icons-material/Warning";
 import { FloatingContainer } from "@/components/ui/FloatingContainer";
-import { ImportService, type ImportProgress, type ImportResult } from "@/utils/import/import-service";
+import { ImportService, type ImportProgress, type ImportResult } from "@/utils/import-service";
 
 interface BackgroundTaskContextType {
   startImport: (type: string, data: string, userId: string) => Promise<void>;

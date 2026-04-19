@@ -1,11 +1,6 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/router-core';
 import type { ReactNode } from 'react';
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
-import { TanStackDevtools } from '@tanstack/react-devtools';
-import { Providers } from '@/components/Providers';
-import { EcosystemClient } from '@/components/ecosystem/EcosystemClient';
-import AppShell from '@/components/layout/AppShell';
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 import appCss from '../globals.css?url';
 
@@ -54,13 +49,9 @@ function RootDocument({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head><HeadContent /></head>
       <body>
-        <Providers>
-          <EcosystemClient nodeId="vault" />
-          <Box sx={{ minHeight: '100vh', width: '100%', bgcolor: '#000' }}>
-            <AppShell>{children}</AppShell>
-          </Box>
-        </Providers>
-        <TanStackDevtools config={{ position: 'bottom-right' }} plugins={[{ name: 'Tanstack Router', render: <TanStackRouterDevtoolsPanel /> }]} />
+        <Box sx={{ minHeight: '100vh', width: '100%', bgcolor: '#000' }}>
+          {children}
+        </Box>
         <Scripts />
       </body>
     </html>
