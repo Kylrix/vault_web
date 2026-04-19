@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { AppwriteService, resolveCurrentUser, appwriteDatabases } from '@/lib/appwrite';
 import { Query } from 'appwrite';
 import { APPWRITE_CONFIG } from '@/lib/appwrite/config';
@@ -7,7 +7,7 @@ import { APPWRITE_CONFIG } from '@/lib/appwrite/config';
  * MASTER PURGE: Wipes all Tier 2 (Zero-Knowledge) data for a user.
  * Triggered upon Master Password Reset.
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
     try {
         const user = await resolveCurrentUser(req);
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
