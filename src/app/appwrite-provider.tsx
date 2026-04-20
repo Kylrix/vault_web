@@ -39,7 +39,13 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
   const idmWindowRef = useRef<Window | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  const initAuthStarted = useRef(false);
   const verbose = process.env.NODE_ENV === "development";
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   // Fetch current user and check master password status
   const fetchUser = useCallback(async (isRetry = false, retryCount = 0) => {
@@ -69,7 +75,11 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
           });
         
         // Use pathname to skip forcing masterpass on specific pages
-        const isAuthPage = pathname === "/" || pathname === "/landing" || pathname?.startsWith("/masterpass");
+        const currentPathname = pathnameRef.current;
+        const isAuthPage =
+          currentPathname === "/" ||
+          currentPathname === "/landing" ||
+          currentPathname?.startsWith("/masterpass");
         
         // The crypto lock state is the source of truth for whether the vault is usable.
         // If it's an auth page, we don't need to force the modal.
@@ -106,7 +116,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
       if (!isRetry) setLoading(false);
       setIsAuthReady(true);
     }
-  }, [verbose, pathname]);
+  }, [verbose]);
 
   const attemptSilentAuth = useCallback(async () => {
     if (typeof window === "undefined") return;
@@ -167,8 +177,9 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
         console.log("[auth] Active session detected, skipping IDM window");
         setUser(account);
         setIsAuthenticating(false);
-        if (pathname === "/" || pathname === "/landing") {
-          router.replace("/masterpass");
+        const currentPathname = pathnameRef.current;
+        if (currentPathname === "/" || currentPathname === "/landing") {
+          router.replace("/dashboard");
         }
         return;
       }
@@ -183,8 +194,9 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
       if (account) {
         setUser(account);
         setIsAuthenticating(false);
-        if (pathname === "/" || pathname === "/landing") {
-          router.replace("/masterpass");
+        const currentPathname = pathnameRef.current;
+        if (currentPathname === "/" || currentPathname === "/landing") {
+          router.replace("/dashboard");
         }
         return;
       }
@@ -209,7 +221,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
       console.error("Failed to open IDM window:", error);
       setIsAuthenticating(false);
     }
-  }, [pathname, router, isAuthenticating, attemptSilentAuth]);
+  }, [router, isAuthenticating, attemptSilentAuth]);
 
   const closeIDMWindow = useCallback(() => {
     if (idmWindowRef.current && !idmWindowRef.current.closed) {
@@ -236,9 +248,9 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
         // Refresh user state
         const account = await fetchUser(true);
         
-        // Redirect to masterpass if authenticated
+        // Send authenticated users into the dashboard flow.
         if (account) {
-          router.replace("/masterpass");
+          router.replace("/dashboard");
         }
       }
     };
@@ -266,6 +278,9 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
 
   // Initial load and authentication check orchestration
   useEffect(() => {
+    if (initAuthStarted.current) return;
+    initAuthStarted.current = true;
+
     const initAuth = async () => {
       try {
         await fetchUser();
@@ -302,7 +317,11 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
     await fetchUser();
     // After refresh, re-calculate needsMasterPassword specifically
     const unlocked = masterPassCrypto.isVaultUnlocked();
-    const isAuthPage = pathname === "/" || pathname === "/landing" || pathname?.startsWith("/masterpass");
+    const currentPathname = pathnameRef.current;
+    const isAuthPage =
+      currentPathname === "/" ||
+      currentPathname === "/landing" ||
+      currentPathname?.startsWith("/masterpass");
     
     if (isAuthPage) {
       setNeedsMasterPassword(false);

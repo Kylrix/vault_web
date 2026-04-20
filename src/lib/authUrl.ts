@@ -18,20 +18,20 @@ export function getAuthOrigin(): string {
 
 /**
  * Generate the source URL for IDM redirect
- * Points to current hostname + /masterpass so IDM redirects back here after auth
+ * Points to current hostname + /dashboard so IDM redirects back here after auth
  */
 export function getSourceURL(): string {
   if (typeof window !== "undefined") {
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
     const port = window.location.port ? `:${window.location.port}` : "";
-    return `${protocol}//${hostname}${port}/masterpass`;
+    return `${protocol}//${hostname}${port}/dashboard`;
   }
 
   // Server-side fallback
   const appSubdomain = APPWRITE_CONFIG.SYSTEM.DOMAIN || "kylrix.space";
   const protocol = process.env.NODE_ENV === "development" ? "http:" : "https:";
-  return `${protocol}//${appSubdomain}/masterpass`;
+  return `${protocol}//${appSubdomain}/dashboard`;
 }
 
 /**
@@ -73,5 +73,4 @@ export function openAuthPopup(): Window | null {
 
   return popup;
 }
-
 

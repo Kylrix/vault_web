@@ -108,6 +108,7 @@ export { ID, Query, Permission, Role };
 const CURRENT_USER_CACHE_KEY = 'kylrix_vault_current_user_v2';
 const CURRENT_USER_CACHE_TTL = 5 * 60 * 1000;
 const CURRENT_USER_REQUEST_TIMEOUT = 8000;
+const VAULT_LOOKUP_REQUEST_TIMEOUT = 8000;
 
 type CachedCurrentUser = {
   user: any | null;
@@ -1080,10 +1081,13 @@ export class AppwriteService {
   static async listKeychainEntries(
     userId: string,
   ): Promise<Keychain[]> {
-    const response = await appwriteDatabases.listDocuments(
-      APPWRITE_DATABASE_ID,
-      APPWRITE_COLLECTION_KEYCHAIN_ID,
-      [Query.equal("userId", userId)],
+    const response = await withTimeout(
+      appwriteDatabases.listDocuments(
+        APPWRITE_DATABASE_ID,
+        APPWRITE_COLLECTION_KEYCHAIN_ID,
+        [Query.equal("userId", userId)],
+      ),
+      VAULT_LOOKUP_REQUEST_TIMEOUT,
     );
     return response.documents as unknown as Keychain[];
   }
@@ -1268,10 +1272,13 @@ export class AppwriteService {
 
   static async getUserDoc(userId: string): Promise<User | null> {
     try {
-      const response = await appwriteDatabases.listDocuments(
-        APPWRITE_DATABASE_ID,
-        APPWRITE_COLLECTION_USER_ID,
-        [Query.equal("userId", userId)],
+      const response = await withTimeout(
+        appwriteDatabases.listDocuments(
+          APPWRITE_DATABASE_ID,
+          APPWRITE_COLLECTION_USER_ID,
+          [Query.equal("userId", userId)],
+        ),
+        VAULT_LOOKUP_REQUEST_TIMEOUT,
       );
       const doc = response.documents[0];
       if (!doc) return null;
@@ -2588,7 +2595,7 @@ export async function getAuthenticationNextRoute(
     // User is fully authenticated, check master password
     const hasMp = await hasMasterpass(userId);
     if (!hasMp) {
-      return "/masterpass";
+      return "/dashboard";
     }
 
     // Check if vault is unlocked
@@ -2597,11 +2604,11 @@ export async function getAuthenticationNextRoute(
         "../app/(protected)/masterpass/logic"
       );
       if (!masterPassCrypto.isVaultUnlocked()) {
-        return "/masterpass";
+        return "/dashboard";
       }
     } catch {
       // If can't import crypto module, assume needs master password
-      return "/masterpass";
+      return "/dashboard";
     }
 
     // Everything is ready, go to dashboard
@@ -2613,7 +2620,7 @@ export async function getAuthenticationNextRoute(
 }
 
 /**
- * Redirects authenticated users to /masterpass or /dashboard as appropriate.
+ * Redirects authenticated users into the dashboard flow.
  * Updated to use the new MFA-aware authentication flow
  */
 export async function redirectIfAuthenticated(
@@ -2630,7 +2637,7 @@ export async function redirectIfAuthenticated(
       // Fallback to original logic if there's an error
       const hasMp = await hasMasterpass(user.$id);
       if (!hasMp || !isVaultUnlocked()) {
-        router.replace("/masterpass");
+        router.replace("/dashboard");
         return true;
       } else {
         router.replace("/dashboard");

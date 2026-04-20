@@ -18,6 +18,7 @@ export function useFinalizeAuth() {
   const finalize = async (options?: {
     redirect?: boolean;
     fallback?: string;
+    nextRoute?: string;
   }) => {
     // 1) Touch account to ensure cookies/session are applied
     try {
@@ -31,6 +32,11 @@ export function useFinalizeAuth() {
     router.refresh();
 
     if (options?.redirect) {
+      if (options.nextRoute) {
+        router.replace(options.nextRoute);
+        return;
+      }
+
       // Decide next route
       const u =
         user ||
@@ -38,14 +44,14 @@ export function useFinalizeAuth() {
           await refresh();
           return null;
         })());
-      // If no user after refresh, go to fallback/masterpass
+      // If no user after refresh, go to the caller fallback or dashboard.
       if (!u) {
-        router.replace(options.fallback || "/masterpass");
+        router.replace(options.fallback || "/dashboard");
         return;
       }
       // The vault crypto lock is the source of truth for local access.
       if (!isVaultUnlocked()) {
-        router.replace("/masterpass");
+        router.replace("/dashboard");
       } else {
         router.replace("/dashboard");
       }

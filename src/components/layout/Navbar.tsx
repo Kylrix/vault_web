@@ -307,8 +307,6 @@ export function Navbar() {
                   onClick={() => {
                     import("@/app/(protected)/masterpass/logic").then(({ masterPassCrypto }) => {
                       masterPassCrypto.lockNow();
-                      sessionStorage.setItem("masterpass_return_to", window.location.pathname);
-                      window.location.replace("/masterpass");
                     });
                     handleCloseMenu();
                   }}

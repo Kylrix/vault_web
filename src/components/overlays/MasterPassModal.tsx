@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Drawer,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -41,13 +42,15 @@ import { ecosystemSecurity } from "@/lib/ecosystem/security";
 interface MasterPassModalProps {
   isOpen: boolean;
   onClose: () => void;
+  successRoute?: string;
+  canLookupKeychain?: boolean;
 }
 
 const VAULT_PRIMARY = "#10B981"; // Emerald
 const BG_COLOR = "#0A0908";
 const SURFACE_COLOR = "#161412";
 
-export function MasterPassModal({ isOpen, onClose }: MasterPassModalProps) {
+export function MasterPassModal({ isOpen, onClose, successRoute, canLookupKeychain = true }: MasterPassModalProps) {
   const [masterPassword, setMasterPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -83,8 +86,12 @@ export function MasterPassModal({ isOpen, onClose }: MasterPassModalProps) {
     await refresh();
 
     // 3. Complete the flow and navigate once the state is settled
-    await finalizeAuth({ redirect: true, fallback: "/dashboard" });
-  }, [user?.$id, finalizeAuth, refresh]);
+    await finalizeAuth({
+      redirect: true,
+      fallback: successRoute || "/dashboard",
+      nextRoute: successRoute,
+    });
+  }, [user?.$id, finalizeAuth, refresh, successRoute]);
 
   const handleSuccessWithSync = onSuccess;
 
@@ -140,7 +147,7 @@ export function MasterPassModal({ isOpen, onClose }: MasterPassModalProps) {
   }, [user, onSuccess]);
 
   useEffect(() => {
-    if (!user || !isOpen) return;
+    if (!user || !isOpen || !canLookupKeychain) return;
 
     // Auto-success if already unlocked
     if (masterPassCrypto.isVaultUnlocked()) {
@@ -191,7 +198,7 @@ export function MasterPassModal({ isOpen, onClose }: MasterPassModalProps) {
     setMasterPassword("");
     setConfirmPassword("");
     setPin("");
-  }, [user, isOpen, handlePasskeyUnlock, onSuccess]);
+  }, [user, isOpen, canLookupKeychain, handlePasskeyUnlock, onSuccess]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,25 +315,26 @@ export function MasterPassModal({ isOpen, onClose }: MasterPassModalProps) {
   }
 
   return (
-    <Dialog
+    <Drawer
+      anchor="bottom"
       open={isOpen}
-      onClose={() => { }} // Prevent closing by clicking outside
+      onClose={() => {}}
+      ModalProps={{ keepMounted: true }}
       PaperProps={{
         sx: {
-          borderRadius: '32px',
+          borderTopLeftRadius: '32px',
+          borderTopRightRadius: '32px',
           bgcolor: SURFACE_COLOR,
-          /* Following Kylrix design guidance: avoid glassmorphism/backdrop blur on surfaces */
           border: '1px solid rgba(255, 255, 255, 0.05)',
           backgroundImage: 'none',
-          /* Subtle ambient shadow instead of heavy glass blur */
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+          boxShadow: '0 -12px 40px rgba(0, 0, 0, 0.55)',
           width: '100%',
-          maxWidth: '400px',
           overflow: 'hidden',
           position: 'relative',
         }
       }}
     >
+      <Box sx={{ width: '100%', maxWidth: '520px', mx: 'auto', position: 'relative' }}>
       <style>{`
         @keyframes race {
           from { stroke-dashoffset: 240; }
@@ -714,6 +722,7 @@ export function MasterPassModal({ isOpen, onClose }: MasterPassModalProps) {
           Logout from Account
         </Button>
       </DialogActions>
-    </Dialog>
+      </Box>
+    </Drawer>
   );
 }

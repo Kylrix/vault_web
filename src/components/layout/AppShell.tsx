@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { 
   Shield, 
@@ -29,6 +29,7 @@ import { useAppwriteVault } from "@/context/appwrite-context";
 import { masterPassCrypto } from "@/app/(protected)/masterpass/logic";
 import { Navbar } from "./Navbar";
 import { VaultFAB } from "./VaultFAB";
+import { MasterPassModal } from "@/components/overlays/MasterPassModal";
 import dynamic from "next/dynamic";
 import type { Models } from "appwrite";
 
@@ -56,12 +57,14 @@ const SIMPLIFIED_LAYOUT_PATHS = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const { user, loading, logout, refresh } = useAppwriteVault();
+  const { user, loading, logout, refresh, needsMasterPassword, isAuthReady } = useAppwriteVault();
   const [showPasskeySetup, setShowPasskeySetup] = useState(false);
 
   const isEmbedded = useMemo(() => searchParams?.get('is_embedded') === 'true', [searchParams]);
   const isSimplifiedLayout = SIMPLIFIED_LAYOUT_PATHS.includes(pathname) || isEmbedded;
+  const isVaultLocked = isAuthReady && Boolean(
+    user && !isSimplifiedLayout && (needsMasterPassword || !masterPassCrypto.isVaultUnlocked())
+  );
 
   useEffect(() => {
     if (user && !loading) {
@@ -75,30 +78,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [user, loading]);
 
   useEffect(() => {
-    if (!loading && !user && !isSimplifiedLayout) {
-      router.replace("/masterpass");
-    }
-  }, [loading, user, isSimplifiedLayout, router]);
-
-  useEffect(() => {
     if (user && !isSimplifiedLayout) {
       masterPassCrypto.updateActivity();
-      let intervalId: number | undefined;
-
-      const keepAlive = () => masterPassCrypto.updateActivity();
-
-      const startWatcher = () => {
-        clearInterval(intervalId as number);
-        intervalId = window.setInterval(() => {
-          if (!masterPassCrypto.isVaultUnlocked()) {
-            sessionStorage.setItem("masterpass_return_to", pathname);
-            router.replace("/masterpass");
-            clearInterval(intervalId as number);
-          }
-        }, 1000);
-      };
-
-      const handleActivity = () => keepAlive();
+      const handleActivity = () => masterPassCrypto.updateActivity();
 
       window.addEventListener("mousemove", handleActivity);
       window.addEventListener("mousedown", handleActivity);
@@ -108,21 +90,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.addEventListener("focus", handleActivity);
       window.addEventListener("click", handleActivity);
 
-      const handleVisibility = () => {
-        if (!masterPassCrypto.isVaultUnlocked()) {
-          sessionStorage.setItem("masterpass_return_to", pathname);
-          router.replace("/masterpass");
-        }
-      };
-      document.addEventListener("visibilitychange", handleVisibility);
-
-      startWatcher();
-
-      if (!masterPassCrypto.isVaultUnlocked()) {
-        sessionStorage.setItem("masterpass_return_to", pathname);
-        router.replace("/masterpass");
-      }
-
       return () => {
         window.removeEventListener("mousemove", handleActivity);
         window.removeEventListener("mousedown", handleActivity);
@@ -131,11 +98,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         window.removeEventListener("touchstart", handleActivity);
         window.removeEventListener("focus", handleActivity);
         window.removeEventListener("click", handleActivity);
-        document.removeEventListener("visibilitychange", handleVisibility);
-        clearInterval(intervalId as number);
       };
     }
-  }, [user, isSimplifiedLayout, pathname, router]);
+  }, [user, isSimplifiedLayout]);
 
   useEffect(() => {
     const mood = isSimplifiedLayout || pathname?.startsWith('/totp') || pathname?.startsWith('/settings')
@@ -158,6 +123,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'var(--background)', display: 'flex', flexDirection: 'column', overflowX: 'hidden' }}>
       <Navbar />
+      <MasterPassModal
+        isOpen={isVaultLocked}
+        onClose={() => {}}
+        canLookupKeychain={isAuthReady}
+      />
 
       <Box sx={{ flex: 1, display: 'flex', width: '100%', overflowX: 'hidden', pt: '72px' }}>
         <Box
@@ -228,10 +198,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 startIcon={<Lock size={16} strokeWidth={1.5} />}
                 onClick={() => {
                   masterPassCrypto.lockNow();
-                  if (!masterPassCrypto.isVaultUnlocked()) {
-                    sessionStorage.setItem("masterpass_return_to", pathname);
-                    router.replace("/masterpass");
-                  }
                 }}
                 sx={{ 
                   justifyContent: 'flex-start', 
@@ -273,7 +239,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden', ml: { lg: '280px' } }}>
           <Box component="main" sx={{ flex: 1, px: { xs: 2, sm: 4, md: 8 }, py: 6, pb: { xs: 12, lg: 6 }, overflowX: 'hidden', maxWidth: '100%' }}>
-            {children}
+            {!isVaultLocked && children}
           </Box>
         </Box>
       </Box>
@@ -395,7 +361,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
       </Paper>
 
-      {user && (
+      {user && !isVaultLocked && (
         <>
           <VaultFAB />
           <PasskeySetup

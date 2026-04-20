@@ -62,7 +62,7 @@ export function PasskeySetup({
     const masterpassSet = await AppwriteService.hasMasterpass(userId);
     if (!masterpassSet) {
       toast.error("You must set a master password before adding a passkey.");
-      router.push("/masterpass");
+      router.push("/dashboard");
       onClose();
       return false;
     }
