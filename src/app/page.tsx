@@ -47,18 +47,6 @@ export default function LandingPage() {
     }
   }, [isAuthReady, isAuthenticated, router]);
 
-  if (!isAuthReady) {
-    return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#000', display: 'grid', placeItems: 'center' }}>
-        <CircularProgress color="primary" />
-      </Box>
-    );
-  }
-
-  if (isAuthenticated) {
-    return null;
-  }
-
   const handleViewDemo = () => {
     if (demoRef.current) {
       demoRef.current.scrollIntoView({ behavior: "smooth" });
