@@ -9,9 +9,10 @@ import {
 import type { ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  appwriteAccount,
   resetMasterpassAndWipe,
   logoutAppwrite,
+  getCurrentUser,
+  onCurrentUserChanged,
 } from "@/lib/appwrite";
 import { APPWRITE_CONFIG } from "@/lib/appwrite/config";
 import { getAuthOrigin, openAuthPopup } from "@/lib/authUrl";
@@ -47,12 +48,23 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
     pathnameRef.current = pathname;
   }, [pathname]);
 
+  useEffect(() => {
+    return onCurrentUserChanged((nextUser) => {
+      setUser(nextUser);
+      setLoading(false);
+      setIsAuthReady(true);
+      if (!nextUser) {
+        setNeedsMasterPassword(false);
+      }
+    });
+  }, []);
+
   // Fetch current user and check master password status
   const fetchUser = useCallback(async (isRetry = false, retryCount = 0) => {
     if (typeof window === 'undefined') return;
     if (!isRetry) setLoading(true);
     try {
-      const account = await appwriteAccount.get();
+      const account = await getCurrentUser(true);
       
       if (verbose)
         logDebug("[auth] account.get success", { hasAccount: !!account });
@@ -172,7 +184,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
 
     // First, check if we already have a session locally
     try {
-      const account = await appwriteAccount.get();
+      const account = await getCurrentUser(true);
       if (account) {
         console.log("[auth] Active session detected, skipping IDM window");
         setUser(account);
@@ -190,7 +202,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
     // Try silent auth before opening popup
     await attemptSilentAuth();
     try {
-      const account = await appwriteAccount.get();
+      const account = await getCurrentUser(true);
       if (account) {
         setUser(account);
         setIsAuthenticating(false);
