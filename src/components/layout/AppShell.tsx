@@ -19,10 +19,11 @@ import {
   ListItem, 
   ListItemButton, 
   ListItemIcon, 
-  ListItemText, 
-  Divider, 
-  Typography, 
+  ListItemText,
+  Divider,
+  Typography,
   Paper,
+  CircularProgress,
   alpha
 } from "@mui/material";
 import { useAppwriteVault } from "@/context/appwrite-context";
@@ -116,8 +117,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <Box sx={{ minHeight: '100vh', bgcolor: 'var(--background)' }}>{children}</Box>;
   }
 
-  if (!loading && !user) {
-    return null;
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          bgcolor: 'var(--background)',
+        }}
+      >
+        <CircularProgress sx={{ color: '#10B981' }} />
+      </Box>
+    );
   }
 
   return (
