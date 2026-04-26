@@ -61,6 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isEmbedded = useMemo(() => searchParams?.get('is_embedded') === 'true', [searchParams]);
   const isSimplifiedLayout = SIMPLIFIED_LAYOUT_PATHS.includes(pathname) || isEmbedded;
+  const isRootPath = pathname === "/";
   const isVaultLocked = isAuthReady && Boolean(
     user && !isSimplifiedLayout && (needsMasterPassword || !masterPassCrypto.isVaultUnlocked())
   );
@@ -110,6 +111,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       document.body.dataset.uiMood = 'ambient';
     };
   }, [isSimplifiedLayout, pathname]);
+
+  if (isRootPath) {
+    return null;
+  }
 
   if (isSimplifiedLayout) {
     return <Box sx={{ minHeight: '100vh', bgcolor: 'var(--background)' }}>{children}</Box>;
