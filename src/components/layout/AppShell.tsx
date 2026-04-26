@@ -238,8 +238,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Box>
 
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden', ml: { lg: '280px' } }}>
-          <Box component="main" sx={{ flex: 1, px: { xs: 2, sm: 4, md: 8 }, py: 6, pb: { xs: 12, lg: 6 }, overflowX: 'hidden', maxWidth: '100%' }}>
-            {!isVaultLocked && children}
+          <Box
+            component="main"
+            sx={{
+              flex: 1,
+              px: { xs: 2, sm: 4, md: 8 },
+              py: 6,
+              pb: { xs: 12, lg: 6 },
+              overflowX: 'hidden',
+              maxWidth: '100%',
+              filter: isVaultLocked ? 'blur(14px) saturate(0.85)' : 'none',
+              pointerEvents: isVaultLocked ? 'none' : 'auto',
+              userSelect: isVaultLocked ? 'none' : 'auto',
+              transition: 'filter 180ms ease',
+            }}
+          >
+            {children}
           </Box>
         </Box>
       </Box>

@@ -325,8 +325,6 @@ export default function DashboardPage() {
       .catch(console.error);
   };
 
-  const { isAuthReady } = useAppwriteVault();
-
   // Client-side filtering and search
   const filteredCredentials = useMemo(() => {
     let source = allCredentials;
@@ -361,14 +359,6 @@ export default function DashboardPage() {
     const startIndex = (currentPage - 1) * pageSize;
     return filteredCredentials.slice(startIndex, startIndex + pageSize);
   }, [filteredCredentials, currentPage, pageSize]);
-
-  if (!isAuthReady || !user) {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', bgcolor: 'background.default' }}>
-        <CircularProgress color="primary" />
-      </Box>
-    );
-  }
 
   const isSearching = !!searchTerm.trim();
   const effectiveTotal = filteredCredentials.length;

@@ -17,14 +17,20 @@ export default function VaultGuard({
   children: React.ReactNode;
 }) {
   const { isVaultUnlocked, needsMasterPassword, isAuthReady } = useAppwriteVault();
+  const isLocked = !isAuthReady || needsMasterPassword || !isVaultUnlocked();
 
-  if (!isAuthReady) {
-    return null; // or a skeleton
-  }
-
-  if (needsMasterPassword || !isVaultUnlocked()) {
-    return null;
-  }
-
-  return <>{children}</>;
+  return (
+    <div
+      style={{
+        position: 'relative',
+        filter: isLocked ? 'blur(14px) saturate(0.85)' : 'none',
+        pointerEvents: isLocked ? 'none' : 'auto',
+        userSelect: isLocked ? 'none' : 'auto',
+        transition: 'filter 180ms ease',
+      }}
+      aria-busy={isLocked}
+    >
+      {children}
+    </div>
+  );
 }
