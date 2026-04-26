@@ -90,7 +90,6 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
         const currentPathname = pathnameRef.current;
         const isAuthPage =
           currentPathname === "/" ||
-          currentPathname === "/landing" ||
           currentPathname?.startsWith("/masterpass");
         
         // The crypto lock state is the source of truth for whether the vault is usable.
@@ -190,7 +189,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
         setUser(account);
         setIsAuthenticating(false);
         const currentPathname = pathnameRef.current;
-        if (currentPathname === "/" || currentPathname === "/landing") {
+        if (currentPathname === "/") {
           router.replace("/dashboard");
         }
         return;
@@ -207,7 +206,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
         setUser(account);
         setIsAuthenticating(false);
         const currentPathname = pathnameRef.current;
-        if (currentPathname === "/" || currentPathname === "/landing") {
+        if (currentPathname === "/") {
           router.replace("/dashboard");
         }
         return;
@@ -332,7 +331,6 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
     const currentPathname = pathnameRef.current;
     const isAuthPage =
       currentPathname === "/" ||
-      currentPathname === "/landing" ||
       currentPathname?.startsWith("/masterpass");
     
     if (isAuthPage) {
