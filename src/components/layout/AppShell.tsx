@@ -23,6 +23,7 @@ import {
   Divider,
   Typography,
   Paper,
+  IconButton,
   alpha
 } from "@mui/material";
 import { useAppwriteVault } from "@/context/appwrite-context";
@@ -61,7 +62,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isEmbedded = useMemo(() => searchParams?.get('is_embedded') === 'true', [searchParams]);
   const isSimplifiedLayout = SIMPLIFIED_LAYOUT_PATHS.includes(pathname) || isEmbedded;
-  const isRootPath = pathname === "/";
   const isVaultLocked = isAuthReady && Boolean(
     user && !isSimplifiedLayout && (needsMasterPassword || !masterPassCrypto.isVaultUnlocked())
   );
@@ -111,10 +111,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       document.body.dataset.uiMood = 'ambient';
     };
   }, [isSimplifiedLayout, pathname]);
-
-  if (isRootPath) {
-    return null;
-  }
 
   if (isSimplifiedLayout) {
     return <Box sx={{ minHeight: '100vh', bgcolor: 'var(--background)' }}>{children}</Box>;
@@ -258,122 +254,68 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Box>
       </Box>
 
-      {/* Mobile Bottom Navigation - Floating Kylrix Style */}
-      <Paper
-        component="nav"
-        elevation={0}
+      {/* Mobile Bottom Navigation - Kylrix Unified Style */}
+      <Box
+        component="footer"
         sx={{
           position: 'fixed',
-          bottom: 24,
-          left: 24,
-          right: 24,
-          zIndex: 50,
-           bgcolor: 'var(--color-surface)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '24px',
-          display: { xs: 'flex', lg: 'none' },
-          justifyContent: 'space-around',
-          alignItems: 'center',
-          height: 72,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-          overflow: 'visible'
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1300,
+          display: { xs: 'block', lg: 'none' }
         }}
       >
-        {navigation
-          .filter((item) => item.name !== "Import")
-          .map((item) => {
-            const isActive = pathname === item.href;
-            const isBig = item.big;
-
-            if (isBig) {
+        <Paper
+          elevation={0}
+          sx={{
+            width: '100%',
+            bgcolor: '#161412',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            borderBottom: 0,
+            borderRadius: '24px 24px 0 0',
+            px: 2,
+            pt: 1.5,
+            pb: 'calc(1.5rem + env(safe-area-inset-bottom))',
+            display: 'flex',
+            justifyContent: 'space-around',
+            alignItems: 'center',
+            boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 -12px 32px rgba(0,0,0,0.45)',
+            backgroundImage: 'none'
+          }}
+        >
+          {navigation
+            .filter((item) => item.name !== "Import")
+            .map((item) => {
+              const isActive = pathname === item.href;
+              const Icon = item.icon;
               return (
-                <Box
+                <IconButton
                   key={item.name}
                   component={Link}
                   href={item.href}
                   sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mt: -6,
-                    textDecoration: 'none',
-                    zIndex: 2
+                    color: isActive ? '#000' : 'rgba(255, 255, 255, 0.6)',
+                    bgcolor: isActive ? '#10B981' : 'transparent',
+                    borderRadius: '16px',
+                    p: 1.5,
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    '&:hover': {
+                      bgcolor: isActive ? '#10B981' : 'rgba(255, 255, 255, 0.05)',
+                      transform: 'translateY(-2px)'
+                    },
+                    ...(isActive && {
+                      boxShadow: '0 0 15px rgba(16, 185, 129, 0.4)',
+                      transform: 'translateY(-4px)'
+                    })
                   }}
                 >
-                  <Box
-                    sx={{
-                      height: 60,
-                      width: 60,
-                      borderRadius: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      bgcolor: '#10B981',
-                      color: '#000',
-                      boxShadow: '0 8px 24px rgba(16, 185, 129, 0.4)',
-                      border: '4px solid #000',
-                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                      '&:active': { transform: 'scale(0.9) translateY(4px)' }
-                    }}
-                  >
-                    <item.icon size={28} strokeWidth={2} />
-                  </Box>
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      fontSize: 10, 
-                      fontWeight: 800, 
-                      mt: 0.5,
-                      color: isActive ? '#10B981' : 'rgba(255, 255, 255, 0.6)',
-                      fontFamily: 'var(--font-space-grotesk)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em'
-                    }}
-                  >
-                    {item.name}
-                  </Typography>
-                </Box>
+                  <Icon size={24} strokeWidth={1.5} />
+                </IconButton>
               );
-            }
-
-            return (
-              <Box
-                key={item.name}
-                component={Link}
-                href={item.href}
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  p: 1,
-                  minWidth: 64,
-                  textDecoration: 'none',
-                  color: isActive ? '#10B981' : 'rgba(255, 255, 255, 0.4)',
-                  transition: 'all 0.2s ease',
-                  '&:active': { transform: 'scale(0.9)' }
-                }}
-              >
-                <item.icon size={22} strokeWidth={isActive ? 2 : 1.5} />
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    fontSize: 10, 
-                    fontWeight: isActive ? 800 : 600, 
-                    mt: 0.5,
-                    fontFamily: 'var(--font-space-grotesk)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.02em',
-                    opacity: isActive ? 1 : 0.6
-                  }}
-                >
-                  {item.name}
-                </Typography>
-              </Box>
-            );
-          })}
-      </Paper>
+            })}
+        </Paper>
+      </Box>
 
       {user && !isVaultLocked && (
         <>
