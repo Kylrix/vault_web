@@ -23,7 +23,6 @@ import {
   Divider,
   Typography,
   Paper,
-  CircularProgress,
   alpha
 } from "@mui/material";
 import { useAppwriteVault } from "@/context/appwrite-context";
@@ -49,7 +48,6 @@ const navigation = [
 ];
 
 const SIMPLIFIED_LAYOUT_PATHS = [
-  "/",
   "/masterpass",
   "/masterpass/reset",
   "/twofa/access",
@@ -115,21 +113,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isSimplifiedLayout) {
     return <Box sx={{ minHeight: '100vh', bgcolor: 'var(--background)' }}>{children}</Box>;
-  }
-
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'grid',
-          placeItems: 'center',
-          bgcolor: 'var(--background)',
-        }}
-      >
-        <CircularProgress sx={{ color: '#10B981' }} />
-      </Box>
-    );
   }
 
   return (
