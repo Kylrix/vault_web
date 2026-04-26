@@ -1,653 +1,637 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import type { Credentials, Folders as FolderDoc } from "@/lib/appwrite/types";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  Box,
+  Typography,
+  Button,
+  Grid,
+  Paper,
+  Stack,
+  alpha,
+  CircularProgress,
+} from "@mui/material";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
+import ShieldIcon from "@mui/icons-material/Shield";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import WarningIcon from "@mui/icons-material/Warning";
+import AddIcon from "@mui/icons-material/Add";
+import DownloadIcon from "@mui/icons-material/Download";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useAppwriteVault } from "@/context/appwrite-context";
 import {
-  deleteCredential,
-  listAllCredentials,
-  listFolders,
-  listRecentCredentials,
-  createFolder,
-  updateCredential,
+  appwriteDatabases,
+  APPWRITE_DATABASE_ID,
+  APPWRITE_COLLECTION_TOTPSECRETS_ID,
+  Query,
+  AppwriteService,
 } from "@/lib/appwrite";
-import toast from "react-hot-toast";
-import CredentialItem from "@/components/app/dashboard/CredentialItem";
-import CredentialSkeleton from "@/components/app/dashboard/CredentialSkeleton";
-import PaginationControls from "@/components/app/dashboard/PaginationControls";
-import SearchBar from "@/components/app/dashboard/SearchBar";
-import CredentialDialog from "@/components/app/dashboard/CredentialDialog";
+import { masterPassCrypto } from "@/app/(protected)/masterpass/logic";
+import { useDataNexus } from "@/context/DataNexusContext";
 import VaultGuard from "@/components/layout/VaultGuard";
-import CredentialDetail from "@/components/app/dashboard/CredentialDetail";
-import { useAI } from "@/app/context/AIContext";
-import { useSudo } from "@/app/context/SudoContext";
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Container, 
-  Grid, 
-  Paper, 
-  CircularProgress, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Chip,
-  Menu,
-  MenuItem,
-  useTheme,
-  useMediaQuery,
-} from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import FolderIcon from "@mui/icons-material/Folder";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import AddIcon from "@mui/icons-material/Add";
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <Typography 
-      variant="overline" 
-      sx={{ 
-        display: 'block',
-        fontWeight: 800, 
-        color: '#10B981', 
-        mb: 2, 
-        letterSpacing: '0.15em',
-        fontFamily: 'var(--font-mono)',
-        fontSize: '0.75rem'
-      }}
-    >
-      {children}
-    </Typography>
-  );
-}
 
 export default function DashboardPage() {
-  const { user } = useAppwriteVault();
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const { analyze, registerCreateModal } = useAI();
-  const theme = useTheme();
-  const isMobileView = useMediaQuery(theme.breakpoints.down('md'));
-  
-  // State for all credentials, fetched once
-  const [allCredentials, setAllCredentials] = useState<Credentials[]>([]);
+  const { user, isAuthReady } = useAppwriteVault();
+  const { fetchOptimized } = useDataNexus();
+  const [stats, setStats] = useState({ totalCreds: 0, totpCount: 0 });
+  const [recent, setRecent] = useState<
+    Array<{ $id: string; name: string; username?: string }>
+  >([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showDialog, setShowDialog] = useState(false);
-  const [dialogType, setDialogType] = useState<string>("login");
-  const [editCredential, setEditCredential] = useState<Credentials | null>(
-    null,
-  );
-  // Add state for prefilling dialog
-  const [dialogPrefill, setDialogPrefill] = useState<{ name?: string; url?: string } | undefined>(undefined);
+  const [dupGroups, setDupGroups] = useState<
+    Array<{ key: string; count: number; fields: string[]; ids: string[] }>
+  >([]);
 
-  // Handle action query param
+  const locked = !masterPassCrypto.isVaultUnlocked();
+
   useEffect(() => {
-    const action = searchParams?.get('action');
-    if (action && ['add-login', 'add-card'].includes(action)) {
-      setEditCredential(null);
-      setDialogType(action.split('-')[1]);
-      setShowDialog(true);
-      
-      // Clean up URL
-      const params = new URLSearchParams(window.location.search);
-      params.delete('action');
-      const newPath = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-      router.replace(newPath);
-    }
-  }, [searchParams, router]);
+    let cancelled = false;
+    const run = async () => {
+      if (!user) return;
+      try {
+        const credsResp = await fetchOptimized(`v_creds_total_${user.$id}`, () =>
+          AppwriteService.listCredentials(
+            user.$id,
+            1,
+            0,
+            [Query.orderDesc("$updatedAt")],
+          )
+        );
 
-  const [selectedCredential, setSelectedCredential] =
-    useState<Credentials | null>(null);
-
-  // Register the modal opener
-  useEffect(() => {
-    registerCreateModal((prefill) => {
-      setEditCredential(null);
-      setDialogType("login");
-      setDialogPrefill(prefill);
-      setShowDialog(true);
-    });
-  }, [registerCreateModal]);
-
-  const [showDetail, setShowDetail] = useState(false);
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-
-  // Folder state
-  const [folders, setFolders] = useState<FolderDoc[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [folderAnchorEl, setFolderAnchorEl] = useState<null | HTMLElement>(null);
-
-  // Recent credentials state
-  const [recentCredentials, setRecentCredentials] = useState<Credentials[]>([]);
-
-  // Delete confirmation state
-  const [credentialToDelete, setCredentialToDelete] =
-    useState<Credentials | null>(null);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const { requestSudo } = useSudo();
-
-  // AI Organization State
-  const [organizing, setOrganizing] = useState(false);
-  // Remove unused organizationPreview state
-  // const [organizationPreview, setOrganizationPreview] = useState<{...} | null>(null);
-
-  // Fetch all credentials once
-  const loadAllCredentials = useCallback(async () => {
-    if (!user?.$id) return;
-    setLoading(true);
-    try {
-      const credentials = await listAllCredentials(user.$id);
-      setAllCredentials(credentials);
-    } catch (error: unknown) {
-      toast.error("Failed to load credentials. Please try again.");
-      console.error("Failed to load credentials:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  // AI Smart Organization Handler
-  const handleSmartOrganize = async () => {
-    if (!user?.$id || organizing) return;
-
-    setOrganizing(true);
-    const toastId = toast.loading("AI is analyzing your vault structure...");
-
-    try {
-      // 1. Get credentials that are NOT in a folder yet (or just all credentials to reorganize everything?)
-      // Let's focus on uncategorized items first for safety, or let user decide.
-      // For V1, let's reorganize everything to ensure a clean state.
-      // Passing all credentials to the sanitizer (it strips secrets).
-
-      const analysisResult = (await analyze('VAULT_ORGANIZE', allCredentials)) as { [folderName: string]: string[] };
-
-      // Expected result: { "Finance": ["id1", "id2"], "Social": ["id3"] }
-      if (!analysisResult || Object.keys(analysisResult).length === 0) {
-        toast.error("AI couldn't find a better organization structure.", { id: toastId });
-        return;
-      }
-
-      // setOrganizationPreview(analysisResult); 
-      toast.success("Organization plan ready! Please review.", { id: toastId });
-      // Note: We need a UI to confirm these changes. Using a simple native confirm for now or a custom modal in future.
-      // For better UX, we'll auto-apply or show a summary dialog. 
-      // Let's implement the application logic here directly for the hackathon MVP speed,
-      // but ideally this should be a "Review Changes" modal.
-
-      // Triggering the confirmation modal
-      // (We'll reuse the delete modal state structure or add a new one if time permits, 
-      // but for now let's just use window.confirm to be safe and fast)
-
-      const confirmMsg = `AI suggests creating/merging into ${Object.keys(analysisResult).length} folders. Proceed?`;
-      if (window.confirm(confirmMsg)) {
-        await applyOrganizationChanges(analysisResult);
-      }
-
-    } catch (error: unknown) {
-      console.error("Smart Organize Failed:", error);
-      toast.error("Failed to organize vault.", { id: toastId });
-    } finally {
-      setOrganizing(false);
-    }
-  };
-
-  const applyOrganizationChanges = async (plan: { [folderName: string]: string[] }) => {
-    const toastId = toast.loading("Applying changes...");
-    try {
-      // 1. Refresh current folders to avoid duplicates
-      const currentFolders = await listFolders(user!.$id);
-      const folderMap = new Map(currentFolders.map(f => [f.name.toLowerCase(), f.$id]));
-
-      // 2. Process each proposed folder
-      for (const [folderName, credentialIds] of Object.entries(plan)) {
-        let folderId = folderMap.get(folderName.toLowerCase());
-
-        // Create folder if it doesn't exist
-        if (!folderId) {
-          const newFolder = await createFolder({
-            name: folderName,
-            userId: user!.$id,
-            parentFolderId: null, // flattened structure for now
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-          folderId = newFolder.$id;
-          folderMap.set(folderName.toLowerCase(), folderId);
+        let totpCount = 0;
+        try {
+          const totpResp = await fetchOptimized(`v_totp_total_${user.$id}`, () =>
+            appwriteDatabases.listDocuments(
+              APPWRITE_DATABASE_ID,
+              APPWRITE_COLLECTION_TOTPSECRETS_ID,
+              [Query.equal("userId", user.$id), Query.limit(1)],
+            )
+          );
+          totpCount =
+            (
+              totpResp as {
+                total?: number;
+                documents: Array<Record<string, unknown>>;
+              }
+            ).total ?? totpResp.documents.length;
+        } catch {
         }
 
-        // 3. Move credentials to folder
-        // We do this in parallel batches to speed it up
-        await Promise.all(credentialIds.map(async (credId) => {
-          // Check if credential actually exists and needs moving
-          const cred = allCredentials.find(c => c.$id === credId);
-          if (cred && cred.folderId !== folderId) {
-            await updateCredential(credId, { folderId });
+        const totalCreds =
+          (
+            credsResp as {
+              total?: number;
+              documents?: Array<Record<string, unknown>>;
+            }
+          ).total ??
+          credsResp.documents?.length ??
+          0;
+
+        let dupGroupsLocal: Array<{
+          key: string;
+          count: number;
+          fields: string[];
+          ids: string[];
+        }> = [];
+        try {
+          const windowSize = Math.min(50, totalCreds);
+          const recentWindow = await fetchOptimized(`v_recent_creds_window_${user.$id}`, () =>
+            AppwriteService.listCredentials(
+              user.$id,
+              windowSize,
+              0,
+              [Query.orderDesc("$updatedAt")],
+            )
+          );
+          const items = recentWindow.documents || [];
+          const fieldCandidates = [
+            "username",
+            "password",
+            "url",
+            "notes",
+            "customFields",
+          ];
+          const fieldsPresent = fieldCandidates.filter((f) =>
+            items.some((it) => {
+              const val = (it as Record<string, unknown>)[f];
+              return val != null && String(val).trim() !== "";
+            }),
+          );
+          const groups = new Map<string, { ids: string[] }>();
+
+          const normalize = (v: unknown) => {
+            if (v == null) return "";
+            if (typeof v === "string") return v.trim().toLowerCase();
+            try {
+              return JSON.stringify(v);
+            } catch {
+              return String(v);
+            }
+          };
+
+          for (const it of items) {
+            const sigObj: Record<string, unknown> = {};
+            for (const f of fieldsPresent)
+              sigObj[f] = normalize((it as Record<string, unknown>)[f]);
+            const signature = JSON.stringify(sigObj);
+            const entry = groups.get(signature) || { ids: [] };
+            entry.ids.push(String((it as Record<string, unknown>)["$id"]));
+            groups.set(signature, entry);
           }
-        }));
+
+          dupGroupsLocal = Array.from(groups.entries())
+            .filter(([, v]) => v.ids.length > 1)
+            .map(([k, v]) => ({
+              key: k,
+              count: v.ids.length,
+              fields: fieldsPresent,
+              ids: v.ids,
+            }));
+        } catch {}
+
+        let recentItems: Array<{
+          $id: string;
+          name: string;
+          username?: string;
+        }> = [];
+        try {
+          const recentDocs = (await AppwriteService.listRecentCredentials(
+            user.$id,
+            5,
+          )) as Array<Record<string, unknown>>;
+          recentItems = recentDocs.map((d) => ({
+            $id: String(d.$id as unknown as string),
+            name: (d.name as string) ?? (d.title as string) ?? "Untitled",
+            username: d.username as string | undefined,
+          }));
+        } catch {
+          recentItems = (credsResp.documents || [])
+            .slice(0, 5)
+            .map((d) => ({
+              $id: String((d as Record<string, unknown>)["$id"]),
+              name:
+                ((d as Record<string, unknown>)["name"] as string) ??
+                ((d as Record<string, unknown>)["title"] as string) ??
+                "Untitled",
+              username: (d as Record<string, unknown>)["username"] as
+                | string
+                | undefined,
+            }));
+        }
+
+        if (!cancelled) {
+          setStats({ totalCreds, totpCount });
+          setRecent(locked ? [] : recentItems);
+          setDupGroups(locked ? [] : dupGroupsLocal);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) setLoading(false);
       }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    user,
+    locked,
+    fetchOptimized,
+  ]);
 
-      toast.success("Vault organized successfully!", { id: toastId });
-      // Refresh UI
-      window.location.reload();
-    } catch (error: unknown) {
-      console.error("Failed to apply changes", error);
-      toast.error("Partial failure during organization.", { id: toastId });
-    }
-  };
-
-  useEffect(() => {
-    if (user?.$id) {
-      loadAllCredentials();
-
-      listFolders(user.$id)
-        .then(setFolders)
-        .catch((err: unknown) => {
-          console.error("Failed to fetch folders:", err);
-          toast.error("Could not load your folders.");
-        });
-
-      listRecentCredentials(user.$id)
-        .then(setRecentCredentials)
-        .catch((err: unknown) => {
-          console.error("Failed to fetch recent credentials:", err);
-        });
-    }
-  }, [user, loadAllCredentials]);
-
-  const handleSearch = (term: string) => {
-    setSearchTerm(term);
-    setCurrentPage(1);
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    setCurrentPage(1);
-  };
-
-  const handleCopy = (value: string) => {
-    navigator.clipboard.writeText(value);
-    toast.success("Copied to clipboard!");
-  };
-
-  const handleAdd = () => {
-    setEditCredential(null);
-    setDialogType("login");
-    setShowDialog(true);
-  };
-
-  const handleEdit = (cred: Credentials) => {
-    setEditCredential(cred);
-    setShowDialog(true);
-  };
-
-  const openDeleteModal = (cred: Credentials) => {
-    setCredentialToDelete(cred);
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleDelete = async () => {
-    if (!user?.$id || !credentialToDelete) return;
-
-    try {
-      await deleteCredential(credentialToDelete.$id);
-      // Remove from the main list
-      setAllCredentials((prev) =>
-        prev.filter((c) => c.$id !== credentialToDelete.$id),
-      );
-      toast.success("Credential deleted successfully.");
-    } catch (error: unknown) {
-      toast.error("Failed to delete credential. Please try again.");
-      console.error("Failed to delete credential:", error);
-    } finally {
-      setIsDeleteModalOpen(false);
-      setCredentialToDelete(null);
-    }
-  };
-
-  // Refresh all data from server
-  const refreshCredentials = () => {
-    if (!user?.$id) return;
-    loadAllCredentials();
-    listRecentCredentials(user.$id)
-      .then(setRecentCredentials)
-      .catch(console.error);
-  };
-
-  // Client-side filtering and search
-  const filteredCredentials = useMemo(() => {
-    let source = allCredentials;
-
-    // 1. Filter by folder
-    if (selectedFolder) {
-      source = source.filter((c) => c.folderId === selectedFolder);
-    }
-
-    // 2. Filter by search term (if any)
-    if (searchTerm.trim()) {
-      const normalizedTerm = searchTerm.trim().toLowerCase();
-      source = source.filter((c) => {
-        const name = (c.name || "").toLowerCase();
-        const username = (c.username || "").toLowerCase();
-        const url = (c.url || "").toLowerCase();
-        const notes = (c.notes || "").toLowerCase();
-        return (
-          name.includes(normalizedTerm) ||
-          username.includes(normalizedTerm) ||
-          url.includes(normalizedTerm) ||
-          notes.includes(normalizedTerm)
-        );
-      });
-    }
-
-    return source;
-  }, [allCredentials, searchTerm, selectedFolder]);
-
-  // Client-side pagination logic
-  const paginatedCredentials = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredCredentials.slice(startIndex, startIndex + pageSize);
-  }, [filteredCredentials, currentPage, pageSize]);
-
-  const isSearching = !!searchTerm.trim();
-  const effectiveTotal = filteredCredentials.length;
-  const totalPages = Math.ceil(effectiveTotal / pageSize) || 1;
+  if (!isAuthReady || !user) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          bgcolor: "background.default",
+        }}
+      >
+        <CircularProgress color="primary" />
+      </Box>
+    );
+  }
 
   return (
     <VaultGuard>
-      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', pb: 10 }}>
-        {/* Header Section */}
-        <Box sx={{ 
-          px: { xs: 2, md: 4 }, 
-          py: 3, 
-          display: 'flex', 
-          flexDirection: { xs: 'column', md: 'row' },
-          alignItems: { xs: 'stretch', md: 'center' },
-          gap: 3,
-          mb: 2
-        }}>
-          <Box sx={{ flexShrink: 0 }}>
-            <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: 'var(--font-clash)', letterSpacing: '-0.04em' }}>
-              Vault
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-              {effectiveTotal} items secured
-            </Typography>
-          </Box>
-
-          <Box sx={{ flexGrow: 1 }}>
-            <SearchBar onSearch={handleSearch} onSmartOrganize={handleSmartOrganize} />
-          </Box>
-
-          <Button 
-            variant="contained" 
-            startIcon={<AddIcon sx={{ fontSize: 18 }} />}
-            onClick={handleAdd}
-            sx={{ 
-              borderRadius: '14px', 
-              px: 3, 
-              py: 1.2, 
-              fontWeight: 800,
-              bgcolor: '#10B981',
-              color: '#000',
-              boxShadow: '0 1px 0 rgba(0, 0, 0, 0.4)',
-              '&:hover': { bgcolor: alpha('#10B981', 0.8) }
-            }}
+      <Box
+        sx={{
+          width: "100%",
+          minHeight: "100vh",
+          bgcolor: "transparent",
+          display: "flex",
+          justifyContent: "center",
+          p: { xs: 2, md: 4 },
+        }}
+      >
+        <Box sx={{ width: "100%", maxWidth: "1100px" }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            spacing={2}
+            sx={{ mb: 5 }}
           >
-            Add Password
-          </Button>
-        </Box>
-
-        {/* Main Content Area */}
-        <Container maxWidth="lg" sx={{ px: { xs: 2, md: 4 } }}>
-          {/* Filters & Actions */}
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, gap: 2, flexWrap: 'wrap' }}>
-            <Button
-              variant="outlined"
-              startIcon={<FolderIcon sx={{ fontSize: 18 }} />}
-              endIcon={<ExpandMoreIcon sx={{ fontSize: 16 }} />}
-              onClick={(e) => setFolderAnchorEl(e.currentTarget)}
-              sx={{ 
-                borderRadius: '12px', 
-                bgcolor: 'rgba(255, 255, 255, 0.02)',
-                borderColor: 'rgba(255, 255, 255, 0.05)',
-                color: 'text.primary',
-                fontWeight: 700,
-                px: 2,
-                '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.2)' }
-              }}
-            >
-              {selectedFolder ? folders.find((f) => f.$id === selectedFolder)?.name : "All Folders"}
-            </Button>
-            
-            <Menu
-              anchorEl={folderAnchorEl}
-              open={Boolean(folderAnchorEl)}
-              onClose={() => setFolderAnchorEl(null)}
-              PaperProps={{
-                sx: {
-                  mt: 1,
-                  borderRadius: '16px',
-                  bgcolor: '#161412',
-                  border: '1px solid rgba(255, 255, 255, 0.05)',
-                  backgroundImage: 'none',
-                  minWidth: '200px',
-                  boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)'
-                }
-              }}
-            >
-              <MenuItem onClick={() => { setSelectedFolder(null); setCurrentPage(1); setFolderAnchorEl(null); }} sx={{ fontWeight: 700 }}>
-                All Folders
-              </MenuItem>
-              {folders.map((folder) => (
-                <MenuItem 
-                  key={folder.$id} 
-                  onClick={() => { setSelectedFolder(folder.$id); setCurrentPage(1); setFolderAnchorEl(null); }}
-                  sx={{ fontWeight: 600 }}
-                >
-                  {folder.name}
-                </MenuItem>
-              ))}
-            </Menu>
-
-            {isSearching && (
-              <Chip 
-                label={`${effectiveTotal} results for "${searchTerm}"`}
-                onDelete={() => handleSearch("")}
-                sx={{ 
-                  borderRadius: '10px', 
-                  bgcolor: alpha('#10B981', 0.1), 
-                  color: '#10B981',
-                  fontWeight: 800,
-                  border: '1px solid rgba(16, 185, 129, 0.2)'
+            <Box>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: 900,
+                  fontFamily: "var(--font-clash)",
+                  letterSpacing: "-0.04em",
+                  mb: 0.5,
                 }}
-              />
-            )}
-          </Box>
-
-          {/* Recent Section */}
-          {!isSearching && !selectedFolder && recentCredentials.length > 0 && (
-            <Box sx={{ mb: 6 }}>
-              <SectionTitle>Recent Items</SectionTitle>
-              <Grid container spacing={2}>
-                {recentCredentials.map((cred) => (
-                  <Grid size={{ xs: 12 }} key={`recent-${cred.$id}`}>
-                    <CredentialItem
-                      credential={cred}
-                      onCopy={handleCopy}
-                      onEdit={() => handleEdit(cred)}
-                      onDelete={() => openDeleteModal(cred)}
-                      onClick={() => {
-                        setSelectedCredential(cred);
-                        setShowDetail(true);
-                      }}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
+              >
+                Overview
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ color: "rgba(255, 255, 255, 0.4)", fontWeight: 500 }}
+              >
+                A quick snapshot of your secure vault.
+              </Typography>
             </Box>
+            <Stack direction="row" spacing={1.5}>
+              <Button
+                component={Link}
+                href="/credentials/new"
+                variant="contained"
+                startIcon={<AddIcon sx={{ fontSize: 18 }} />}
+                sx={{
+                  borderRadius: "14px",
+                  px: 3,
+                  py: 1.2,
+                  fontWeight: 800,
+                  bgcolor: "#6366F1",
+                  color: "#000",
+                  "&:hover": { bgcolor: alpha("#6366F1", 0.8) },
+                }}
+              >
+                Add Credential
+              </Button>
+              <Button
+                component={Link}
+                href="/import"
+                variant="outlined"
+                startIcon={<DownloadIcon sx={{ fontSize: 18 }} />}
+                sx={{
+                  borderRadius: "14px",
+                  px: 3,
+                  py: 1.2,
+                  fontWeight: 700,
+                  borderColor: "rgba(255, 255, 255, 0.1)",
+                  color: "#fff",
+                  "&:hover": {
+                    borderColor: "rgba(255, 255, 255, 0.2)",
+                    bgcolor: "rgba(255, 255, 255, 0.05)",
+                  },
+                }}
+              >
+                Import
+              </Button>
+            </Stack>
+          </Stack>
+
+          {locked && (
+            <Paper
+              sx={{
+                p: 2.5,
+                mb: 4,
+                borderRadius: "20px",
+                bgcolor: alpha("#FFB000", 0.05),
+                border: "1px solid",
+                borderColor: alpha("#FFB000", 0.2),
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              <WarningIcon sx={{ fontSize: 24, color: "#FFB000" }} />
+              <Typography
+                variant="body2"
+                sx={{ color: "#FFB000", fontWeight: 600 }}
+              >
+                Your vault is locked. Unlock to view full statistics and recent activity.
+              </Typography>
+            </Paper>
           )}
 
-          {/* All Items Section */}
-          <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <SectionTitle>
-              {isSearching ? "Search Results" : "All Items"}
-            </SectionTitle>
-            
-            {!loading && effectiveTotal > 0 && (
-              <PaginationControls
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalItems={effectiveTotal}
-                pageSize={pageSize}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
-              />
-            )}
-          </Box>
-
-          {/* Credentials List */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {loading ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <CredentialSkeleton key={`skeleton-${i}`} />
-              ))
-            ) : paginatedCredentials.length === 0 ? (
-              <Paper sx={{ 
-                p: 8, 
-                textAlign: 'center', 
-                borderRadius: '32px', 
-                bgcolor: 'rgba(255, 255, 255, 0.01)', 
-                border: '1px dashed', 
-                borderColor: 'rgba(255, 255, 255, 0.1)' 
-              }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                  {isSearching
-                    ? `No credentials found matching "${searchTerm}"`
-                    : "Your vault is empty. Add your first password to get started!"}
-                </Typography>
-              </Paper>
-            ) : (
-              paginatedCredentials.map((cred: Credentials) => (
-                <CredentialItem
-                    key={cred.$id}
-                    credential={cred}
-                    onCopy={handleCopy}
-                    onEdit={() => handleEdit(cred)}
-                  onDelete={() => openDeleteModal(cred)}
-                  onClick={() => {
-                    setSelectedCredential(cred);
-                    setShowDetail(true);
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {[
+              { label: "Total Credentials", value: stats.totalCreds, icon: VpnKeyIcon, color: "#6366F1" },
+              { label: "TOTP Codes", value: stats.totpCount, icon: ShieldIcon, color: "#10B981" },
+              { label: "Recent Activity", value: Math.min(stats.totalCreds, 5), icon: AccessTimeIcon, color: "#A855F7" },
+              { label: "Security Alerts", value: 0, icon: WarningIcon, color: "#F59E0B" },
+            ].map((stat, i) => (
+              <Grid size={{ xs: 6, md: 3 }} key={i}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: "24px",
+                    bgcolor: "#161412",
+                    border: "1px solid rgba(255, 255, 255, 0.05)",
+                    position: "relative",
+                    boxShadow: "0 1px 0 rgba(0, 0, 0, 0.4)",
+                    "&::before": {
+                      content: '""',
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: "1px",
+                      background: "rgba(255, 255, 255, 0.03)",
+                      borderRadius: "24px",
+                    },
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    transition: "all 0.3s ease",
+                    "&:hover": {
+                      borderColor: alpha(stat.color, 0.3),
+                      transform: "translateY(-2px)",
+                      boxShadow: `0 10px 20px ${alpha(stat.color, 0.05)}, 0 1px 0 rgba(0, 0, 0, 0.4)`,
+                    },
                   }}
-                />
-              ))
-            )}
-          </Box>
+                >
+                  <Box sx={{ mb: 2 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "rgba(255, 255, 255, 0.4)",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "0.65rem",
+                      }}
+                    >
+                      {stat.label}
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      sx={{
+                        fontWeight: 900,
+                        mt: 0.5,
+                        fontFamily: "var(--font-clash)",
+                        letterSpacing: "-0.02em",
+                      }}
+                    >
+                      {loading ? (
+                        <CircularProgress
+                          size={20}
+                          thickness={6}
+                          sx={{ color: "rgba(255, 255, 255, 0.2)" }}
+                        />
+                      ) : (
+                        stat.value
+                      )}
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: "12px",
+                      bgcolor: alpha(stat.color, 0.05),
+                      border: `1px solid ${alpha(stat.color, 0.1)}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <stat.icon sx={{ fontSize: 20, color: stat.color }} />
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
 
-          {/* Bottom Pagination */}
-          {!loading && effectiveTotal > pageSize && (
-            <Box sx={{ mt: 6, display: 'flex', justifyContent: 'center' }}>
-              <PaginationControls
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalItems={effectiveTotal}
-                pageSize={pageSize}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
-              />
-            </Box>
-          )}
-        </Container>
+          <Grid container spacing={3}>
+            <Grid size={{ xs: 12, md: 7 }}>
+              <Paper
+                sx={{
+                  p: 4,
+                  borderRadius: "28px",
+                  bgcolor: "rgba(10, 10, 10, 0.9)",
+                  backdropFilter: "blur(25px) saturate(180%)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  height: "100%",
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: 900, mb: 3, fontFamily: "var(--font-space-grotesk)" }}
+                >
+                  Recent Items
+                </Typography>
+                <Stack spacing={1.5}>
+                  {loading ? (
+                    <Box sx={{ py: 4, textAlign: "center" }}>
+                      <CircularProgress size={32} sx={{ color: "#6366F1" }} />
+                    </Box>
+                  ) : recent.length === 0 ? (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "rgba(255, 255, 255, 0.3)",
+                        py: 4,
+                        textAlign: "center",
+                      }}
+                    >
+                      No items found in your vault.
+                    </Typography>
+                  ) : (
+                    recent.map((item) => (
+                      <Box
+                        key={item.$id}
+                        component={Link}
+                        href={`/dashboard?focus=${item.$id}`}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          p: 2,
+                          borderRadius: "18px",
+                          bgcolor: "rgba(255, 255, 255, 0.02)",
+                          border: "1px solid transparent",
+                          textDecoration: "none",
+                          color: "inherit",
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            bgcolor: "rgba(255, 255, 255, 0.05)",
+                            borderColor: "rgba(255, 255, 255, 0.1)",
+                            transform: "translateX(4px)",
+                          },
+                        }}
+                      >
+                        <Stack direction="row" spacing={2} alignItems="center">
+                          <Box
+                            sx={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: "12px",
+                              bgcolor: "rgba(255, 255, 255, 0.05)",
+                              fontSize: "1rem",
+                              fontWeight: 800,
+                              color: "#6366F1",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            {item.name?.[0]?.toUpperCase() ?? "?"}
+                          </Box>
+                          <Box>
+                            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                              {item.name}
+                            </Typography>
+                            {item.username && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  color: "rgba(255, 255, 255, 0.4)",
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {item.username}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Stack>
+                        <ChevronRightIcon
+                          sx={{ fontSize: 18, color: "rgba(255, 255, 255, 0.3)" }}
+                        />
+                      </Box>
+                    ))
+                  )}
+                </Stack>
+              </Paper>
+            </Grid>
 
-        <CredentialDialog
-          open={showDialog}
-          onClose={() => {
-            setShowDialog(false);
-            setDialogPrefill(undefined);
-          }}
-          initial={editCredential}
-          prefill={dialogPrefill}
-          defaultType={dialogType}
-          onSaved={refreshCredentials}
-        />
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Paper
+                sx={{
+                  p: 4,
+                  borderRadius: "28px",
+                  bgcolor: "rgba(10, 10, 10, 0.9)",
+                  backdropFilter: "blur(25px) saturate(180%)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  height: "100%",
+                }}
+              >
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  sx={{ mb: 3 }}
+                >
+                  <Typography
+                    variant="h6"
+                    sx={{ fontWeight: 900, fontFamily: "var(--font-space-grotesk)" }}
+                  >
+                    Duplicates
+                  </Typography>
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: "10px",
+                      bgcolor: alpha("#6366F1", 0.1),
+                      color: "#6366F1",
+                      fontSize: "0.75rem",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {dupGroups.length} GROUPS
+                  </Box>
+                </Stack>
 
-          {/* Delete Confirmation Dialog */}
-        <Dialog
-          open={isDeleteModalOpen}
-          onClose={() => setIsDeleteModalOpen(false)}
-          PaperProps={{
-            sx: {
-              borderRadius: '24px',
-              bgcolor: '#161412',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
-              backgroundImage: 'none',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(0, 0, 0, 0.4)',
-              p: 1
-            }
-          }}
-        >
-          <DialogTitle sx={{ fontWeight: 900, fontFamily: 'var(--font-clash)', letterSpacing: '-0.02em' }}>
-            Delete Credential
-          </DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-              Are you sure you want to delete the credential for <strong>{credentialToDelete?.name}</strong>? This action cannot be undone.
-            </Typography>
-          </DialogContent>
-          <DialogActions sx={{ p: 3, gap: 1 }}>
-            <Button 
-              fullWidth 
-              variant="outlined" 
-              onClick={() => setIsDeleteModalOpen(false)}
-              sx={{ borderRadius: '14px', fontWeight: 700 }}
-            >
-              Cancel
-            </Button>
-            <Button 
-              fullWidth 
-              variant="contained" 
-              color="error"
-              onClick={() => {
-                requestSudo({
-                  onSuccess: () => handleDelete()
-                });
-              }}
-              sx={{ 
-                borderRadius: '14px', 
-                fontWeight: 800,
-                bgcolor: alpha('#ef4444', 0.1),
-                color: '#ef4444',
-                border: '1px solid rgba(239, 68, 68, 0.2)',
-                '&:hover': {
-                  bgcolor: alpha('#ef4444', 0.2),
-                  borderColor: alpha('#ef4444', 0.4)
-                }
-              }}
-            >
-              Delete
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Credential Detail Sidebar/Overlay */}
-        {showDetail && selectedCredential && (
-          <CredentialDetail
-            credential={selectedCredential}
-            onClose={() => setShowDetail(false)}
-            isMobile={isMobileView}
-          />
-        )}
+                <Stack spacing={2}>
+                  {loading ? (
+                    <Box sx={{ py: 4, textAlign: "center" }}>
+                      <CircularProgress size={32} sx={{ color: "#6366F1" }} />
+                    </Box>
+                  ) : dupGroups.length === 0 ? (
+                    <Box sx={{ textAlign: "center", py: 4 }}>
+                      <ShieldIcon
+                        sx={{
+                          fontSize: 40,
+                          color: "rgba(255, 255, 255, 0.1)",
+                          mb: "12px",
+                        }}
+                      />
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "rgba(255, 255, 255, 0.3)" }}
+                      >
+                        No duplicates detected.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    dupGroups.map((g, idx) => (
+                      <Paper
+                        key={g.key}
+                        sx={{
+                          p: 2.5,
+                          borderRadius: "20px",
+                          bgcolor: "rgba(255, 255, 255, 0.02)",
+                          border: "1px solid rgba(255, 255, 255, 0.05)",
+                        }}
+                      >
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ mb: 1.5 }}
+                        >
+                          <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                            Group #{idx + 1}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            sx={{ color: "#6366F1", fontWeight: 700 }}
+                          >
+                            {g.count} matches
+                          </Typography>
+                        </Stack>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "rgba(255, 255, 255, 0.4)",
+                            display: "block",
+                            mb: 2,
+                          }}
+                        >
+                          Matching: {g.fields.join(", ")}
+                        </Typography>
+                        <Button
+                          component={Link}
+                          href={`/dashboard?focus=${g.ids[0]}`}
+                          fullWidth
+                          variant="outlined"
+                          size="small"
+                          sx={{
+                            borderRadius: "12px",
+                            fontWeight: 700,
+                            borderColor: "rgba(255, 255, 255, 0.1)",
+                            color: "#fff",
+                          }}
+                        >
+                          Review Group
+                        </Button>
+                      </Paper>
+                    ))
+                  )}
+                </Stack>
+              </Paper>
+            </Grid>
+          </Grid>
+        </Box>
       </Box>
     </VaultGuard>
   );

@@ -62,6 +62,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isEmbedded = useMemo(() => searchParams?.get('is_embedded') === 'true', [searchParams]);
   const isSimplifiedLayout = SIMPLIFIED_LAYOUT_PATHS.includes(pathname) || isEmbedded;
+  const currentRoute = useMemo(
+    () => (searchParams?.toString() ? `${pathname}?${searchParams.toString()}` : pathname),
+    [pathname, searchParams],
+  );
   const isVaultLocked = isAuthReady && Boolean(
     user && !isSimplifiedLayout && (needsMasterPassword || !masterPassCrypto.isVaultUnlocked())
   );
@@ -122,6 +126,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MasterPassModal
         isOpen={isVaultLocked}
         onClose={() => {}}
+        successRoute={currentRoute}
         canLookupKeychain={isAuthReady}
       />
 
