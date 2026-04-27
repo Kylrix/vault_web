@@ -12,9 +12,7 @@ import {
   resetMasterpassAndWipe,
   logoutAppwrite,
   getCurrentUser,
-  onCurrentUserChanged,
 } from "@/lib/appwrite";
-import { APPWRITE_CONFIG } from "@/lib/appwrite/config";
 import { getAuthOrigin, openAuthPopup } from "@/lib/authUrl";
 import { masterPassCrypto } from "./(protected)/masterpass/logic";
 import { logDebug, logWarn } from "@/lib/logger";
@@ -41,30 +39,18 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
-  const initAuthStarted = useRef(false);
   const verbose = process.env.NODE_ENV === "development";
 
   useEffect(() => {
     pathnameRef.current = pathname;
   }, [pathname]);
 
-  useEffect(() => {
-    return onCurrentUserChanged((nextUser) => {
-      setUser(nextUser);
-      setLoading(false);
-      setIsAuthReady(true);
-      if (!nextUser) {
-        setNeedsMasterPassword(false);
-      }
-    });
-  }, []);
-
   // Fetch current user and check master password status
-  const fetchUser = useCallback(async (isRetry = false, retryCount = 0) => {
+  const fetchUser = useCallback(async () => {
     if (typeof window === 'undefined') return;
-    if (!isRetry) setLoading(true);
+    setLoading(true);
     try {
-      const account = await getCurrentUser(true);
+      const account = await getCurrentUser();
       
       if (verbose)
         logDebug("[auth] account.get success", { hasAccount: !!account });
@@ -111,109 +97,19 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
       // Explicitly clear user on 401
       setUser(null);
       setNeedsMasterPassword(false);
-      
-      // Check for auth=success signal in URL
-      const hasAuthSignal = window.location.search.includes('auth=success');
-      
-      if (hasAuthSignal && retryCount < 3) {
-        logWarn(`[auth] Auth signal detected but session not found in keep. Retrying... (${retryCount + 1})`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return fetchUser(true, retryCount + 1);
-      }
 
       if (verbose) logWarn("[auth] account.get error", { error: e });
       return null;
     } finally {
-      if (!isRetry) setLoading(false);
+      setLoading(false);
       setIsAuthReady(true);
     }
   }, [verbose]);
-
-  const attemptSilentAuth = useCallback(async () => {
-    if (typeof window === "undefined") return;
-
-    const authSubdomain = APPWRITE_CONFIG.SYSTEM.AUTH_SUBDOMAIN;
-    const domain = APPWRITE_CONFIG.SYSTEM.DOMAIN;
-    if (!authSubdomain || !domain) return;
-
-    return new Promise<void>((resolve) => {
-      const iframe = document.createElement("iframe");
-      iframe.src = `https://${authSubdomain}.${domain}/silent-check`;
-      iframe.style.display = "none";
-
-      const timeout = setTimeout(() => {
-        cleanup();
-        resolve();
-      }, 5000);
-
-      const handleIframeMessage = (event: MessageEvent) => {
-        if (event.origin !== `https://${authSubdomain}.${domain}`) return;
-
-        if (
-          event.data?.type === "idm:auth-status" &&
-          event.data.status === "authenticated"
-        ) {
-          logDebug("[auth] Silent auth discovered session");
-          fetchUser(true); // retry fetch
-          cleanup();
-          resolve();
-        } else if (event.data?.type === "idm:auth-status") {
-          cleanup();
-          resolve();
-        }
-      };
-
-      const cleanup = () => {
-        clearTimeout(timeout);
-        window.removeEventListener("message", handleIframeMessage);
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
-        }
-      };
-
-      window.addEventListener("message", handleIframeMessage);
-      document.body.appendChild(iframe);
-    });
-  }, [fetchUser]);
 
   const openIDMWindow = useCallback(async () => {
     if (typeof window === "undefined" || isAuthenticating) return;
 
     setIsAuthenticating(true);
-
-    // First, check if we already have a session locally
-    try {
-      const account = await getCurrentUser(true);
-      if (account) {
-        console.log("[auth] Active session detected, skipping IDM window");
-        setUser(account);
-        setIsAuthenticating(false);
-        const currentPathname = pathnameRef.current;
-        if (currentPathname === "/") {
-          router.replace("/dashboard");
-        }
-        return;
-      }
-    } catch (_e: unknown) {
-      // No session, proceed to silent check
-    }
-
-    // Try silent auth before opening popup
-    await attemptSilentAuth();
-    try {
-      const account = await getCurrentUser(true);
-      if (account) {
-        setUser(account);
-        setIsAuthenticating(false);
-        const currentPathname = pathnameRef.current;
-        if (currentPathname === "/") {
-          router.replace("/dashboard");
-        }
-        return;
-      }
-    } catch (_e: unknown) {
-      // Still no session
-    }
 
     if (idmWindowRef.current && !idmWindowRef.current.closed) {
       idmWindowRef.current.focus();
@@ -232,7 +128,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
       console.error("Failed to open IDM window:", error);
       setIsAuthenticating(false);
     }
-  }, [router, isAuthenticating, attemptSilentAuth]);
+  }, [router, isAuthenticating]);
 
   const closeIDMWindow = useCallback(() => {
     if (idmWindowRef.current && !idmWindowRef.current.closed) {
@@ -257,7 +153,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
         setIsAuthenticating(false);
         
         // Refresh user state
-        const account = await fetchUser(true);
+        const account = await fetchUser();
         
         // Send authenticated users into the dashboard flow.
         if (account) {
@@ -280,7 +176,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
         idmWindowRef.current = null;
         setIDMWindowOpen(false);
         setIsAuthenticating(false);
-        fetchUser(true);
+        fetchUser();
       }
     }, 1000);
 
@@ -289,24 +185,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
 
   // Initial load and authentication check orchestration
   useEffect(() => {
-    if (initAuthStarted.current) return;
-    initAuthStarted.current = true;
-
-    const initAuth = async () => {
-      try {
-        await fetchUser();
-      } catch (err: unknown) {
-        const e = err as AppwriteError;
-        if (e.code === 401) {
-          await attemptSilentAuth();
-        }
-      } finally {
-        setLoading(false);
-        setIsAuthReady(true);
-      }
-    };
-
-    initAuth();
+    void fetchUser();
 
     // Listen for vault lock events
     const handleVaultLocked = () => {
@@ -322,7 +201,7 @@ export function AppwriteProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("vault-locked", handleVaultLocked);
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, [fetchUser, attemptSilentAuth]);
+  }, [fetchUser]);
 
   const refresh = async () => {
     await fetchUser();
